@@ -9,8 +9,71 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Not used yet
-FLAT_THRESHOLD = os.getenv("FLAT_THRESHOLD")
+# If these are not properly defined as floats, this will intentionally break.
+# TODO: Not used yet
+FLAT_THRESHOLD_1D = float(os.getenv("FLAT_THRESHOLD_1D")) # pyright: ignore[reportArgumentType]
+FLAT_THRESHOLD_7D = float(os.getenv("FLAT_THRESHOLD_7D")) # pyright: ignore[reportArgumentType]
+FLAT_THRESHOLD_30D = float(os.getenv("FLAT_THRESHOLD_30D")) # pyright: ignore[reportArgumentType]
+
+INTERPRETATION = {
+    "30D UP": {
+        "7D UP": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+        , "7D FLAT": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+        , "7D DOWN": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+    }
+    , "30D FLAT": {
+        "7D UP": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+        , "7D FLAT": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+        , "7D DOWN": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+    }
+    , "30D DOWN": {
+        "7D UP": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+        , "7D FLAT": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+        , "7D DOWN": {
+            "1D UP": "placeholder"
+            , "1D FLAT": "placeholder"
+            , "1D DOWN": "placeholder"
+        }
+    }
+}
+
+print(FLAT_THRESHOLD_1D)
+
+exit(0)
+
+
 
 # Add a safety check
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -54,7 +117,6 @@ def send_telegram_msg(text):
     requests.post(url, data=payload)
 
 def perc_diff(new_val: float, old_val: float) -> float:
-    print(f'Inputs to perc_diff: {new_val}, {old_val}')
     return (new_val / old_val - 1) * 100
 
 def perc_diff_report(diff: float) -> str:
