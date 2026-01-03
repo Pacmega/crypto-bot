@@ -5,7 +5,7 @@ I'll make a proper README later.
 Basics to-do:
 - Run daily instead of once
 - Percentage differences in MA's since last run (yesterday)
-- Differentiate between differences that are up, down, or flat (what changes are boring)
+- Differentiate between differences that are up, down, or flat per MA type (what changes are boring)
 - Obtain a longer history window and persist it (takes some time to query due to API limits)
 
 More interesting to-do:

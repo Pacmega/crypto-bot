@@ -9,6 +9,9 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# Not used yet
+FLAT_THRESHOLD = os.getenv("FLAT_THRESHOLD")
+
 # Add a safety check
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     raise ValueError("Missing credentials! Ensure .env file is set up correctly.")
@@ -50,6 +53,21 @@ def send_telegram_msg(text):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     requests.post(url, data=payload)
 
+def perc_diff(new_val: float, old_val: float) -> float:
+    print(f'Inputs to perc_diff: {new_val}, {old_val}')
+    return (new_val / old_val - 1) * 100
+
+def perc_diff_report(diff: float) -> str:
+    """
+    Do formatting rounding, but more importantly prefix positive numbers with a plus.
+    
+    :param diff: Percentage difference
+    :type diff: float
+    :return: +{diff}% with 1 decimal if diff is positive, -{diff}% if negative.
+    :rtype: str
+    """
+    return f"+{round(diff, 1)}%" if diff >= 0 else f"{round(diff, 1)}%"
+
 def main():
     report_lines = ["*Market Update (Daily MAs)*\n"]
     
@@ -57,19 +75,25 @@ def main():
         df = get_kraken_ohlc(pair_code)
         if df is not None:
             # Calculate Moving Averages
-            # 1D SMA is essentially the daily close
-            df['SMA_1'] = df['close'].rolling(window=1).mean()
+            # 1D SMA is just the daily close
             df['SMA_7'] = df['close'].rolling(window=7).mean()
             df['SMA_30'] = df['close'].rolling(window=30).mean()
             
-            # Get the most recent values (last row)
-            latest = df.iloc[-1]
+            # Get the most recent and 2nd most recent values (last 2 rows)
+            today = df.iloc[-1]
+            yesterday = df.iloc[-2]
+
+            differences = {
+                "SMA_1_diff": perc_diff_report(perc_diff(today['close'], yesterday['close']))
+                , "SMA_7_diff": perc_diff_report(perc_diff(today['SMA_7'], yesterday['SMA_7']))
+                , "SMA_30_diff": perc_diff_report(perc_diff(today['SMA_30'], yesterday['SMA_30']))
+            }
             
             line = (
                 f"*{display_name}*\n"
-                f"• 1D MA: ${latest['SMA_1']:.2f}\n"
-                f"• 7D MA: ${latest['SMA_7']:.2f}\n"
-                f"• 30D MA: ${latest['SMA_30']:.2f}\n"
+                f"• 1D MA: ${today['SMA_1']:.2f} ({differences['SMA_1_diff']})\n"
+                f"• 7D MA: ${today['SMA_7']:.2f} ({differences['SMA_7_diff']})\n"
+                f"• 30D MA: ${today['SMA_30']:.2f} ({differences['SMA_30_diff']})\n"
             )
             report_lines.append(line)
     
