@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+from enum import Enum
 
 # Load the variables from .env into the environment
 load_dotenv()
@@ -15,65 +16,76 @@ FLAT_THRESHOLD_1D = float(os.getenv("FLAT_THRESHOLD_1D")) # pyright: ignore[repo
 FLAT_THRESHOLD_7D = float(os.getenv("FLAT_THRESHOLD_7D")) # pyright: ignore[reportArgumentType]
 FLAT_THRESHOLD_30D = float(os.getenv("FLAT_THRESHOLD_30D")) # pyright: ignore[reportArgumentType]
 
-INTERPRETATION = {
-    "30D UP": {
-        "7D UP": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+class MATypes(Enum):
+    MA1D = 1
+    MA7D = 2
+    MA30D = 3
+
+class MoveType(Enum):
+    UP = 1
+    FLAT = 0
+    DOWN = -1
+
+class Actions(Enum):
+    BUYBIG = 2
+    BUYSMALL = 1
+    HOLD = 0
+    SELLSMALL = -1
+    SELLBIG = -2
+
+INTERPRETATION_30_7_1 = {
+    MoveType.UP: {
+        MoveType.UP: {
+            MoveType.UP: Actions.BUYSMALL
+            , MoveType.FLAT: Actions.HOLD
+            , MoveType.DOWN: Actions.SELLSMALL
         }
-        , "7D FLAT": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+        , MoveType.FLAT: {
+            MoveType.UP: Actions.BUYBIG
+            , MoveType.FLAT: Actions.HOLD
+            , MoveType.DOWN: Actions.SELLSMALL
         }
-        , "7D DOWN": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+        , MoveType.DOWN: {
+            MoveType.UP: Actions.BUYSMALL
+            , MoveType.FLAT: Actions.SELLSMALL
+            , MoveType.DOWN: Actions.SELLBIG
         }
     }
-    , "30D FLAT": {
-        "7D UP": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+    , MoveType.FLAT: {
+        MoveType.UP: {
+            MoveType.UP: Actions.BUYSMALL
+            , MoveType.FLAT: Actions.SELLSMALL
+            , MoveType.DOWN: Actions.HOLD
         }
-        , "7D FLAT": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+        , MoveType.FLAT: {
+            MoveType.UP: Actions.BUYSMALL
+            , MoveType.FLAT: Actions.HOLD
+            , MoveType.DOWN: Actions.SELLSMALL
         }
-        , "7D DOWN": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+        , MoveType.DOWN: {
+            MoveType.UP: Actions.SELLBIG
+            , MoveType.FLAT: Actions.SELLSMALL
+            , MoveType.DOWN: Actions.SELLBIG
         }
     }
-    , "30D DOWN": {
-        "7D UP": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+    , MoveType.DOWN: {
+        MoveType.UP: {
+            MoveType.UP: Actions.BUYBIG
+            , MoveType.FLAT: Actions.HOLD
+            , MoveType.DOWN: Actions.SELLBIG
         }
-        , "7D FLAT": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+        , MoveType.FLAT: {
+            MoveType.UP: Actions.SELLSMALL
+            , MoveType.FLAT: Actions.SELLSMALL
+            , MoveType.DOWN: Actions.SELLBIG
         }
-        , "7D DOWN": {
-            "1D UP": "placeholder"
-            , "1D FLAT": "placeholder"
-            , "1D DOWN": "placeholder"
+        , MoveType.DOWN: {
+            MoveType.UP: Actions.SELLBIG
+            , MoveType.FLAT: Actions.SELLBIG
+            , MoveType.DOWN: Actions.SELLBIG
         }
     }
 }
-
-print(FLAT_THRESHOLD_1D)
-
-exit(0)
-
-
 
 # Add a safety check
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -119,6 +131,23 @@ def send_telegram_msg(text):
 def perc_diff(new_val: float, old_val: float) -> float:
     return (new_val / old_val - 1) * 100
 
+def evaluate_MA(type: MATypes, value: float) -> MoveType:
+    if (type==MATypes.MA1D and abs(value) < FLAT_THRESHOLD_1D) \
+            or (type==MATypes.MA7D and abs(value) < FLAT_THRESHOLD_7D) \
+            or (type==MATypes.MA30D and abs(value) < FLAT_THRESHOLD_30D):
+        return MoveType.FLAT
+    elif value < 0:
+        return MoveType.DOWN
+    else:
+        return MoveType.UP
+
+def interpret(differences: dict) -> Actions:
+    MA_1D_move = evaluate_MA(MATypes.MA1D, differences["SMA_1_diff"])
+    MA_7D_move = evaluate_MA(MATypes.MA7D, differences["SMA_7_diff"])
+    MA_30D_move = evaluate_MA(MATypes.MA30D, differences["SMA_30_diff"])
+
+    return INTERPRETATION_30_7_1[MA_30D_move][MA_7D_move][MA_1D_move]
+
 def perc_diff_report(diff: float) -> str:
     """
     Do formatting rounding, but more importantly prefix positive numbers with a plus.
@@ -146,19 +175,22 @@ def main():
             yesterday = df.iloc[-2]
 
             differences = {
-                "SMA_1_diff": perc_diff_report(perc_diff(today['close'], yesterday['close']))
-                , "SMA_7_diff": perc_diff_report(perc_diff(today['SMA_7'], yesterday['SMA_7']))
-                , "SMA_30_diff": perc_diff_report(perc_diff(today['SMA_30'], yesterday['SMA_30']))
+                "SMA_1_diff": perc_diff(today['close'], yesterday['close'])
+                , "SMA_7_diff": perc_diff(today['SMA_7'], yesterday['SMA_7'])
+                , "SMA_30_diff": perc_diff(today['SMA_30'], yesterday['SMA_30'])
             }
+
+            action = interpret(differences)
             
             line = (
                 f"*{display_name}*\n"
-                f"• 1D MA: ${today['SMA_1']:.2f} ({differences['SMA_1_diff']})\n"
-                f"• 7D MA: ${today['SMA_7']:.2f} ({differences['SMA_7_diff']})\n"
-                f"• 30D MA: ${today['SMA_30']:.2f} ({differences['SMA_30_diff']})\n"
+                f"• 1D MA: ${today['close']:.2f} ({perc_diff_report(differences['SMA_1_diff'])})\n"
+                f"• 7D MA: ${today['SMA_7']:.2f} ({perc_diff_report(differences['SMA_7_diff'])})\n"
+                f"• 30D MA: ${today['SMA_30']:.2f} ({perc_diff_report(differences['SMA_30_diff'])})\n"
+                f"Interpretation: {action.name}\n"
             )
             report_lines.append(line)
-    
+
     full_message = "\n".join(report_lines)
     print(full_message)
 
