@@ -2,7 +2,6 @@ import requests
 import pandas as pd
 import os
 from dotenv import load_dotenv
-from datetime import datetime
 from enum import Enum
 
 # Load the variables from .env into the environment
@@ -141,7 +140,7 @@ def evaluate_MA(type: MATypes, value: float) -> MoveType:
     else:
         return MoveType.UP
 
-def interpret(differences: dict) -> Actions:
+def interpret_MA_moves(differences: dict) -> Actions:
     MA_1D_move = evaluate_MA(MATypes.MA1D, differences["SMA_1_diff"])
     MA_7D_move = evaluate_MA(MATypes.MA7D, differences["SMA_7_diff"])
     MA_30D_move = evaluate_MA(MATypes.MA30D, differences["SMA_30_diff"])
@@ -159,37 +158,60 @@ def perc_diff_report(diff: float) -> str:
     """
     return f"+{round(diff, 1)}%" if diff >= 0 else f"{round(diff, 1)}%"
 
+def perform_analysis(kraken_dataframe: pd.DataFrame):
+    # Calculate Moving Averages
+    # 1D SMA is just the daily close
+    df = kraken_dataframe.copy()
+    df['SMA_7'] = df['close'].rolling(window=7).mean()
+    df['SMA_30'] = df['close'].rolling(window=30).mean()
+    
+    return df
+
+def determine_action(today_data: pd.Series, yesterday_data: pd.Series):
+    # Get the most recent and 2nd most recent values (last 2 rows)
+
+    differences = {
+        "SMA_1_diff": perc_diff(today_data['close'], yesterday_data['close'])
+        , "SMA_7_diff": perc_diff(today_data['SMA_7'], yesterday_data['SMA_7'])
+        , "SMA_30_diff": perc_diff(today_data['SMA_30'], yesterday_data['SMA_30'])
+    }
+
+    action = interpret_MA_moves(differences)
+
+    # Action is really the interesting one, the rest is returned for information purposes
+    return {'action': action, 'differences': differences}
+
+def create_report_entry(display_name: str, values_today: pd.Series, differences: dict, action: Actions) -> str:
+    line = (
+                f"*{display_name}*\n"
+                f"• 1D MA: ${values_today['close']:.2f} ({perc_diff_report(differences['SMA_1_diff'])})\n"
+                f"• 7D MA: ${values_today['SMA_7']:.2f} ({perc_diff_report(differences['SMA_7_diff'])})\n"
+                f"• 30D MA: ${values_today['SMA_30']:.2f} ({perc_diff_report(differences['SMA_30_diff'])})\n"
+                f"Interpretation: {action.name}\n"
+            )
+    return line
+
 def main():
     report_lines = ["*Market Update (Daily MAs)*\n"]
     
     for pair_code, display_name in PAIRS.items():
         df = get_kraken_ohlc(pair_code)
         if df is not None:
-            # Calculate Moving Averages
-            # 1D SMA is just the daily close
-            df['SMA_7'] = df['close'].rolling(window=7).mean()
-            df['SMA_30'] = df['close'].rolling(window=30).mean()
-            
-            # Get the most recent and 2nd most recent values (last 2 rows)
-            today = df.iloc[-1]
-            yesterday = df.iloc[-2]
+            df_with_analysis = perform_analysis(df)
 
-            differences = {
-                "SMA_1_diff": perc_diff(today['close'], yesterday['close'])
-                , "SMA_7_diff": perc_diff(today['SMA_7'], yesterday['SMA_7'])
-                , "SMA_30_diff": perc_diff(today['SMA_30'], yesterday['SMA_30'])
-            }
+            today = df_with_analysis.iloc[-1]
+            yesterday = df_with_analysis.iloc[-2]
 
-            action = interpret(differences)
-            
-            line = (
-                f"*{display_name}*\n"
-                f"• 1D MA: ${today['close']:.2f} ({perc_diff_report(differences['SMA_1_diff'])})\n"
-                f"• 7D MA: ${today['SMA_7']:.2f} ({perc_diff_report(differences['SMA_7_diff'])})\n"
-                f"• 30D MA: ${today['SMA_30']:.2f} ({perc_diff_report(differences['SMA_30_diff'])})\n"
-                f"Interpretation: {action.name}\n"
-            )
-            report_lines.append(line)
+            result = determine_action(today, yesterday)
+
+            action = result['action']
+            differences = result['differences']
+
+            report_lines.append(create_report_entry(display_name, today, differences, action))
+
+            # For debugging/price logging purposes, since Kraken only gives at most 720 points
+            # filename = f'{pair_code}_{df.iloc[-1]['time'].date()}_{df.iloc[0]['time'].date()}.csv'
+            # df.to_csv(filename, header=True)
 
     full_message = "\n".join(report_lines)
     print(full_message)
